@@ -217,7 +217,7 @@ class Player:
     def save_file(self) -> Path:
         """Generate save file path from player name."""
         safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '_')).rstrip()
-        return Path.home() / f'.blackjack_save_{safe_name}.json'
+        return Path.home() / f'blackjack_save_{safe_name}.json'
     
     def can_bet(self, amount: float) -> bool:
         """Check if player can afford bet"""
