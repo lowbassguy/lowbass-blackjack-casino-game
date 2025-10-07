@@ -79,6 +79,14 @@ class Card:
         else:
             return [int(self.rank)]
 
+    def get_hilo_value(self) -> int:
+        """Return the Hi-Lo value for card counting"""
+        if self.rank in ['10', 'J', 'Q', 'K', 'A']:
+            return -1
+        elif self.rank in ['2', '3', '4', '5', '6']:
+            return 1
+        return 0
+
 class Deck:
     """Manages a shoe of cards with tracking of used cards"""
     
@@ -87,14 +95,24 @@ class Deck:
         self.num_decks = num_decks
         self.cards: List[Card] = []
         self.used_cards: List[Card] = []
+        self.running_count = 0
         self.reshuffle_threshold = 0.25  # Reshuffle when 25% cards remain
         logger.info(f"🎲 Initializing shoe with {num_decks} decks")
         self.reset()
     
+    @property
+    def true_count(self) -> float:
+        """Calculate true count based on remaining decks"""
+        remaining_decks = len(self.cards) / 52
+        if remaining_decks == 0:
+            return 0
+        return self.running_count / remaining_decks
+
     def reset(self):
         """Create fresh shoe of cards"""
         self.cards = []
         self.used_cards = []
+        self.running_count = 0
         ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
         
         # Create multiple decks
@@ -119,7 +137,8 @@ class Deck:
         
         card = self.cards.pop()
         self.used_cards.append(card)
-        logger.debug(f"📤 Drew card: {card}, {len(self.cards)} remaining")
+        self.running_count += card.get_hilo_value()
+        logger.debug(f"📤 Drew card: {card}, Running Count: {self.running_count}, {len(self.cards)} remaining")
         return card
     
     def needs_reshuffle(self) -> bool:
@@ -349,7 +368,18 @@ class BlackjackGame:
         # Display shoe stats
         stats = self.deck.get_stats()
         print(f"📊 Shoe: {stats['remaining']}/{stats['total']} cards "
-              f"({100-stats['percentage_used']:.1f}% remaining)\n")
+              f"({100-stats['percentage_used']:.1f}% remaining)")
+
+        # Card Counting Display
+        true_count = self.deck.true_count
+        if true_count >= 2:
+            count_advice = f"{Colors.GREEN}Player advantage. Bet high!{Colors.RESET}"
+        elif true_count <= -2:
+            count_advice = f"{Colors.RED}Dealer advantage. Bet low.{Colors.RESET}"
+        else:
+            count_advice = f"{Colors.YELLOW}Neutral. Bet normally.{Colors.RESET}"
+
+        print(f"📈 Count: {self.deck.running_count} (True: {true_count:.2f}) | {count_advice}\n")
         
         # Display hands
         if self.dealer_hand:
