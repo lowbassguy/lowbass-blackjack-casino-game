@@ -211,8 +211,13 @@ class Player:
         self.total_winnings = 0
         self.hands_played = 0
         self.hands_won = 0
-        self.save_file = Path.home() / '.blackjack_save.json'
         logger.info(f"👤 Player '{name}' initialized with ${self.balance:.2f}")
+
+    @property
+    def save_file(self) -> Path:
+        """Generate save file path from player name."""
+        safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '_')).rstrip()
+        return Path.home() / f'blackjack_save_{safe_name}.json'
     
     def can_bet(self, amount: float) -> bool:
         """Check if player can afford bet"""
@@ -248,27 +253,30 @@ class Player:
             with open(self.save_file, 'w') as f:
                 json.dump(save_data, f, indent=2)
             
-            logger.debug(f"💾 Progress saved to {self.save_file}")
+            logger.debug(f"💾 Progress for '{self.name}' saved to {self.save_file}")
         except Exception as e:
-            logger.error(f"❌ Failed to save progress: {e}")
+            logger.error(f"❌ Failed to save progress for '{self.name}': {e}")
     
     def load_progress(self) -> bool:
-        """Load player progress from file"""
+        """Load player progress from file based on self.name."""
         try:
             if self.save_file.exists():
                 with open(self.save_file, 'r') as f:
                     data = json.load(f)
                 
-                self.name = data['name']
+                # Sanity check name in file, but don't overwrite self.name
+                if data.get('name') != self.name:
+                    logger.warning(f"Name mismatch in save file: expected '{self.name}', found '{data.get('name')}'. Loading data anyway.")
+
                 self.balance = data['balance']
                 self.total_winnings = data.get('total_winnings', 0)
                 self.hands_played = data.get('hands_played', 0)
                 self.hands_won = data.get('hands_won', 0)
                 
-                logger.info(f"📂 Progress loaded from {data['timestamp']}")
+                logger.info(f"📂 Progress for '{self.name}' loaded from {data.get('timestamp', 'N/A')}")
                 return True
         except Exception as e:
-            logger.error(f"❌ Failed to load progress: {e}")
+            logger.error(f"❌ Failed to load progress for '{self.name}': {e}")
         return False
     
     def get_stats(self) -> str:
@@ -529,6 +537,9 @@ class BlackjackGame:
         # Update stats
         self.player.hands_played += 1
         
+        # Incremental save after each hand
+        self.player.save_progress()
+
         # Wait for player to continue
         input(f"{Colors.CYAN}Press Enter to continue...{Colors.RESET}")
     
@@ -539,13 +550,12 @@ class BlackjackGame:
         print("🎰 WELCOME TO LOWBASS'S BLACKJACK CASINO 🎰".center(50))
         print(f"{'═' * 50}{Colors.RESET}\n")
         
-        print("1. 🎮 New Game")
-        print("2. 📂 Continue Game")
-        print("3. 📊 View Statistics")
-        print("4. 📖 Rules & Help")
-        print("5. 🚪 Exit\n")
+        print("1. 🎮 Play Game")
+        print("2. 📊 View Statistics")
+        print("3. 📖 Rules & Help")
+        print("4. 🚪 Exit\n")
         
-        return input(f"{Colors.YELLOW}Choose option (1-5): {Colors.RESET}")
+        return input(f"{Colors.YELLOW}Choose option (1-4): {Colors.RESET}")
     
     def show_rules(self):
         """Display game rules"""
@@ -598,46 +608,38 @@ class BlackjackGame:
             choice = self.main_menu()
             
             if choice == '1':
-                # New game
-                self.player = Player()
-                print(f"\n{Colors.GREEN}Starting new game...{Colors.RESET}")
+                # Play Game (New or Load)
+                print(f"\n{Colors.GREEN}Let's play!{Colors.RESET}")
                 name = input("Enter your name: ")
-                self.player.name = name if name else "Player"
+                self.player = Player(name if name else "Player")
+
+                if self.player.load_progress():
+                    print(f"\n{Colors.CYAN}Welcome back, {self.player.name}! Your progress has been loaded.{Colors.RESET}")
+                else:
+                    print(f"\n{Colors.GREEN}Welcome, {self.player.name}! A new profile will be created for you.{Colors.RESET}")
                 
+                sleep(2)
+
                 while self.running and self.player.balance > 0:
                     self.play_hand()
                 
                 if self.player.balance <= 0:
                     print(f"\n{Colors.RED}💸 You're out of money! Game Over!{Colors.RESET}")
-                    input("Press Enter to continue...")
-            
+                    input("Press Enter to return to the menu...")
+
             elif choice == '2':
-                # Continue game
-                if self.player.load_progress():
-                    print(f"\n{Colors.GREEN}✅ Game loaded successfully!{Colors.RESET}")
-                    sleep(2)
-                    
-                    while self.running and self.player.balance > 0:
-                        self.play_hand()
-                    
-                    if self.player.balance <= 0:
-                        print(f"\n{Colors.RED}💸 You're out of money! Game Over!{Colors.RESET}")
-                        input("Press Enter to continue...")
-                else:
-                    print(f"\n{Colors.YELLOW}No save file found. Starting new game...{Colors.RESET}")
-                    sleep(2)
-            
-            elif choice == '3':
                 # View statistics
                 self.clear_screen()
+                # If we want to view stats for any player, we'd need to prompt for a name here.
+                # For now, it shows stats of the last player.
                 print(self.player.get_stats())
                 input(f"\n{Colors.CYAN}Press Enter to return to menu...{Colors.RESET}")
             
-            elif choice == '4':
+            elif choice == '3':
                 # Show rules
                 self.show_rules()
             
-            elif choice == '5':
+            elif choice == '4':
                 # Exit
                 self.running = False
             
